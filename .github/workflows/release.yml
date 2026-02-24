@@ -275,8 +275,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=ghcr.io/finbarr/yolobox:buildcache
+          cache-to: type=registry,ref=ghcr.io/finbarr/yolobox:buildcache,mode=max
           tags: |
             ghcr.io/finbarr/yolobox:latest
             ghcr.io/finbarr/yolobox:${{ steps.version.outputs.VERSION }}

@@ -17,6 +17,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
+# =============================================================================
+# STABLE LAYERS — large, rarely change (ordered first to minimize re-downloads)
+# =============================================================================
+
 # Install system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Essentials
@@ -80,28 +84,13 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     apt-get install -y docker-ce-cli docker-compose-plugin docker-buildx-plugin && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Bun (from official image)
-COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
-RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
-
-# Create symlinks for bat/fd (Debian/Ubuntu rename these binaries)
-RUN ln -s /usr/bin/batcat /usr/local/bin/bat && \
-    ln -s /usr/bin/fdfind /usr/local/bin/fd
-
-# Install global npm packages and AI CLIs
-RUN npm install -g \
-    typescript \
-    ts-node \
-    yarn \
-    pnpm \
-    @google/gemini-cli \
-    @openai/codex \
-    opencode-ai \
-    @github/copilot
-
 # Install Go (from official image)
 COPY --from=go-source /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:$PATH"
+
+# Install Bun (from official image)
+COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 
 # Install uv (fast Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
@@ -112,6 +101,22 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x -o /usr/share/terminfo /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 
+# Create symlinks for bat/fd (Debian/Ubuntu rename these binaries)
+RUN ln -s /usr/bin/batcat /usr/local/bin/bat && \
+    ln -s /usr/bin/fdfind /usr/local/bin/fd
+
+# Install stable dev tools (change rarely, separated from AI CLIs)
+RUN npm install -g --no-audit --no-fund \
+    typescript \
+    ts-node \
+    yarn \
+    pnpm \
+    && npm cache clean --force
+
+# =============================================================================
+# USER SETUP — small layers, stable
+# =============================================================================
+
 # Create yolo user with passwordless sudo
 RUN useradd -m -s /bin/bash yolo \
     && echo "yolo ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/yolo \
@@ -121,28 +126,8 @@ RUN useradd -m -s /bin/bash yolo \
 RUN mkdir -p /output /secrets \
     && chown yolo:yolo /output
 
-# Copy Claude Code from installer stage
-COPY --from=claude-installer /root/.local/bin/claude /usr/local/bin/claude
-
-USER yolo
-
-# Create symlink for Claude at ~/.local/bin (host config expects it there)
-# Then run `claude install` to register installation metadata so `claude update` works
-RUN mkdir -p /home/yolo/.local/bin && \
-    ln -s /usr/local/bin/claude /home/yolo/.local/bin/claude && \
-    claude install || true
-WORKDIR /home/yolo
-
-# Set up a fun prompt and aliases
-RUN echo 'PS1="\\[\\033[35m\\]yolo\\[\\033[0m\\]:\\[\\033[36m\\]\\w\\[\\033[0m\\] 🎲 "' >> ~/.bashrc \
-    && echo 'alias ll="ls -la"' >> ~/.bashrc \
-    && echo 'alias la="ls -A"' >> ~/.bashrc \
-    && echo 'alias l="ls -CF"' >> ~/.bashrc \
-    && echo 'alias yeet="rm -rf"' >> ~/.bashrc
-
 # AI CLI wrappers in yolo mode - these find the real binary dynamically,
 # so they survive updates (npm update -g, claude upgrade, etc.)
-USER root
 RUN mkdir -p /opt/yolobox/bin
 
 # Generic wrapper template that finds real binary by excluding wrapper dir from PATH
@@ -186,19 +171,7 @@ ENV NPM_CONFIG_PREFIX=/home/yolo/.npm-global
 # Add wrapper dir, npm-global bin, and ~/.local/bin to PATH (wrappers take priority)
 ENV PATH="/opt/yolobox/bin:/home/yolo/.npm-global/bin:/home/yolo/.local/bin:$PATH"
 
-USER yolo
-
-# Create npm-global prefix dir (also created in entrypoint for existing named volumes)
-RUN mkdir -p /home/yolo/.npm-global
-
-# Welcome message
-RUN echo 'echo ""' >> ~/.bashrc \
-    && echo 'echo -e "\\033[1;35m  Welcome to yolobox!\\033[0m"' >> ~/.bashrc \
-    && echo 'echo -e "\\033[33m  Your home directory is safe. Go wild.\\033[0m"' >> ~/.bashrc \
-    && echo 'echo ""' >> ~/.bashrc
-
 # Create entrypoint script
-USER root
 RUN mkdir -p /host-claude /host-gemini /host-git /host-agent-instructions /host-files && \
     printf '%s\n' \
     '#!/bin/bash' \
@@ -326,7 +299,54 @@ RUN mkdir -p /host-claude /host-gemini /host-git /host-agent-instructions /host-
     'exec "$@"' \
     > /usr/local/bin/yolobox-entrypoint.sh && \
     chmod +x /usr/local/bin/yolobox-entrypoint.sh
+
 USER yolo
+
+# Create npm-global prefix dir (also created in entrypoint for existing named volumes)
+RUN mkdir -p /home/yolo/.npm-global
+
+# Set up a fun prompt and aliases
+RUN echo 'PS1="\\[\\033[35m\\]yolo\\[\\033[0m\\]:\\[\\033[36m\\]\\w\\[\\033[0m\\] 🎲 "' >> ~/.bashrc \
+    && echo 'alias ll="ls -la"' >> ~/.bashrc \
+    && echo 'alias la="ls -A"' >> ~/.bashrc \
+    && echo 'alias l="ls -CF"' >> ~/.bashrc \
+    && echo 'alias yeet="rm -rf"' >> ~/.bashrc
+
+# Welcome message
+RUN echo 'echo ""' >> ~/.bashrc \
+    && echo 'echo -e "\\033[1;35m  Welcome to yolobox!\\033[0m"' >> ~/.bashrc \
+    && echo 'echo -e "\\033[33m  Your home directory is safe. Go wild.\\033[0m"' >> ~/.bashrc \
+    && echo 'echo ""' >> ~/.bashrc
+
+# =============================================================================
+# VOLATILE LAYERS — change when bumping AI CLI versions
+# Placed last so upgrades only re-download these layers, not the stable base.
+# =============================================================================
+
+# AI coding CLIs (updated more frequently than dev tools above)
+# NPM_CONFIG_PREFIX is set above for runtime user installs; unset it here
+# so these install to the default system location like the dev tools.
+USER root
+RUN NPM_CONFIG_PREFIX="" npm install -g --no-audit --no-fund \
+    @google/gemini-cli \
+    @openai/codex \
+    opencode-ai \
+    @github/copilot \
+    && NPM_CONFIG_PREFIX="" npm cache clean --force
+USER yolo
+
+# Copy Claude Code from installer stage
+USER root
+COPY --from=claude-installer /root/.local/bin/claude /usr/local/bin/claude
+USER yolo
+
+# Create symlink for Claude at ~/.local/bin (host config expects it there)
+# Then run `claude install` to register installation metadata so `claude update` works
+RUN mkdir -p /home/yolo/.local/bin && \
+    ln -s /usr/local/bin/claude /home/yolo/.local/bin/claude && \
+    claude install || true
+
+WORKDIR /home/yolo
 
 # Working directory is set by yolobox CLI to the actual project path
 
