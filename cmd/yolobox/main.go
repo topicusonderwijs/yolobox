@@ -1085,14 +1085,21 @@ func prepareFileMountDir(files map[string]string) (string, error) {
 	return tmpDir, nil
 }
 
-// findDockerSocket returns the path to the Docker socket on the host.
-// It checks DOCKER_HOST, common macOS paths, and the Linux default.
+// findDockerSocket returns the Docker socket path to use as a volume mount source.
+// On macOS, Docker always runs inside a VM (Docker Desktop or Colima), and the
+// socket inside the VM is at /var/run/docker.sock regardless of the host-side path.
+// On Linux, Docker runs natively so we return the actual host socket path.
 func findDockerSocket() (string, error) {
+	const vmInternalSocket = "/var/run/docker.sock"
+
 	// Check DOCKER_HOST env var
 	if dh := os.Getenv("DOCKER_HOST"); dh != "" {
 		if strings.HasPrefix(dh, "unix://") {
 			sock := strings.TrimPrefix(dh, "unix://")
 			if _, err := os.Stat(sock); err == nil {
+				if runtime.GOOS == "darwin" {
+					return vmInternalSocket, nil
+				}
 				return sock, nil
 			}
 		}
@@ -1100,13 +1107,19 @@ func findDockerSocket() (string, error) {
 
 	home, _ := os.UserHomeDir()
 	candidates := []string{
-		"/var/run/docker.sock", // Standard path (works with Docker Desktop, Colima, Linux)
-		filepath.Join(home, ".docker", "run", "docker.sock"), // Docker Desktop macOS (alternative)
-		filepath.Join(home, ".colima", "default", "docker.sock"), // Colima (alternative)
+		"/var/run/docker.sock",                                    // Standard path (Linux, or macOS if symlinked)
+		filepath.Join(home, ".docker", "run", "docker.sock"),      // Docker Desktop macOS
+		filepath.Join(home, ".colima", "default", "docker.sock"),  // Colima macOS
 	}
 
 	for _, sock := range candidates {
 		if _, err := os.Stat(sock); err == nil {
+			if runtime.GOOS == "darwin" {
+				// On macOS, the mount source is resolved inside the Docker VM,
+				// not on the macOS host. The socket inside any Docker VM is
+				// always at /var/run/docker.sock.
+				return vmInternalSocket, nil
+			}
 			return sock, nil
 		}
 	}
