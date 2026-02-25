@@ -475,6 +475,8 @@ func TestParseFlagsNetwork(t *testing.T) {
 }
 
 func TestParseFlagsPod(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
 	cfg, rest, err := parseBaseFlags("run", []string{"--pod", "mypod", "echo"}, t.TempDir())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -498,6 +500,8 @@ func TestParseFlagsNetworkConflict(t *testing.T) {
 }
 
 func TestParseFlagsPodNetworkConflict(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
 	_, _, err := parseBaseFlags("run", []string{"--pod", "mypod", "--network", "mynet", "echo"}, t.TempDir())
 	if err == nil {
 		t.Error("expected error for --pod with --network")
@@ -508,6 +512,8 @@ func TestParseFlagsPodNetworkConflict(t *testing.T) {
 }
 
 func TestParseFlagsPodNoNetworkConflict(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
 	_, _, err := parseBaseFlags("run", []string{"--pod", "mypod", "--no-network", "echo"}, t.TempDir())
 	if err == nil {
 		t.Error("expected error for --pod with --no-network")
@@ -661,8 +667,10 @@ func TestBuildRunArgsTimezone(t *testing.T) {
 }
 
 func TestPreprocessClaudeConfig(t *testing.T) {
-	// Create a temp file with test config
+	// Use temp dir as HOME so the function writes to tmpDir/.yolobox/tmp/
+	// instead of the real ~/.yolobox/tmp/ (which may not exist or be writable)
 	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
 	srcPath := filepath.Join(tmpDir, ".claude.json")
 
 	// Config with installMethod that should be removed
