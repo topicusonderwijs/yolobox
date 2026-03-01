@@ -790,49 +790,11 @@ func runShell(cfg Config) error {
 				return err
 			}
 		} else {
-			// Merge setup results into config (preserving any CLI overrides)
-			if !cfg.GitConfig {
-				cfg.GitConfig = newCfg.GitConfig
-			}
-			if !cfg.GhToken {
-				cfg.GhToken = newCfg.GhToken
-			}
-			if !cfg.SSHAgent {
-				cfg.SSHAgent = newCfg.SSHAgent
-			}
-			if !cfg.Docker {
-				cfg.Docker = newCfg.Docker
-			}
-			if !cfg.NoNetwork {
-				cfg.NoNetwork = newCfg.NoNetwork
-			}
-			if !cfg.NoYolo {
-				cfg.NoYolo = newCfg.NoYolo
-			}
-			if cfg.CPUs == "" {
-				cfg.CPUs = newCfg.CPUs
-			}
-			if cfg.Memory == "" {
-				cfg.Memory = newCfg.Memory
-			}
-			if cfg.ShmSize == "" {
-				cfg.ShmSize = newCfg.ShmSize
-			}
-			if cfg.GPUs == "" {
-				cfg.GPUs = newCfg.GPUs
-			}
-			if len(cfg.Devices) == 0 {
-				cfg.Devices = append([]string{}, newCfg.Devices...)
-			}
-			if len(cfg.CapAdd) == 0 {
-				cfg.CapAdd = append([]string{}, newCfg.CapAdd...)
-			}
-			if len(cfg.CapDrop) == 0 {
-				cfg.CapDrop = append([]string{}, newCfg.CapDrop...)
-			}
-			if len(cfg.RuntimeArgs) == 0 {
-				cfg.RuntimeArgs = append([]string{}, newCfg.RuntimeArgs...)
-			}
+			// Merge setup results into config (preserving any CLI overrides).
+			// mergeConfig applies cfg's non-zero values on top of newCfg,
+			// so CLI/config-file settings win and setup fills the gaps.
+			mergeConfig(&newCfg, cfg)
+			cfg = newCfg
 		}
 	}
 
